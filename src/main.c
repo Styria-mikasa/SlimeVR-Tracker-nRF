@@ -44,6 +44,12 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
 int main(void)
 {
+#if DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, pwr_gpios)
+    gpio_pin_configure_dt(&gnd, GPIO_OUTPUT_ACTIVE);
+    gpio_pin_set_dt(&gnd, 0);
+    gpio_pin_configure_dt(&pwr, GPIO_OUTPUT_ACTIVE);
+    gpio_pin_set_dt(&pwr, 1);
+#endif
 #if IGNORE_RESET && BUTTON_EXISTS
 	bool reset_pin_reset = false;
 #else
@@ -128,6 +134,10 @@ int main(void)
 		set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_BOOT);
 
 	sys_reset_mode(reset_mode);
+
+	// Perform ICM45686 startup health check after system initialization
+	// This helps catch clock issues early, especially after deep sleep wake-up or USB reconnection
+	sensor_imu_startup_check();
 
 	return 0;
 }
