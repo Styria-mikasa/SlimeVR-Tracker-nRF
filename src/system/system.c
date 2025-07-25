@@ -157,7 +157,7 @@ static int sys_retained_init(void)
 		ram_retention_valid = true;
 	// All contents of NVS was stored in RAM to not need initializing NVS often
 	if (!retained_validate()) // Check ram retention
-	{ 
+	{
 		LOG_WRN("Invalidated RAM");
 		sys_nvs_init();
 		// read from nvs to retained
@@ -242,7 +242,7 @@ void sys_read(uint16_t id, void *data, size_t len)
 
 void sys_clear(void)
 {
-	
+
 	static bool reset_confirm = false;
 	if (!reset_confirm)
 	{
@@ -445,18 +445,22 @@ void sys_reset_mode(uint8_t mode)
 	switch (mode)
 	{
 #if CONFIG_USER_EXTRA_ACTIONS
-	case 1:
-		LOG_INF("IMU calibration requested");
-		sensor_request_calibration();
+	case 1: // Button pressed 2 times - 6-side calibration
+#if CONFIG_SENSOR_USE_6_SIDE_CALIBRATION
+		LOG_INF("6-side calibration requested");
+		sensor_request_calibration_6_side();
+#else
+		LOG_INF("6-side calibration not supported");
+#endif
 		break;
 #endif
-	case 2: // Reset mode pairing reset
-		LOG_INF("Pairing reset requested");
-		esb_reset_pair();
+	case 2: // Button pressed 3 times - sensor scan
+		LOG_INF("Sensor scan requested");
+		sensor_request_scan(true);
 		break;
 #if DFU_EXISTS // Using DFU bootloader
 	case 3:
-	case 4: // Reset mode DFU
+	case 4: // Button pressed 4-5 times - DFU mode
 		LOG_INF("DFU requested");
 #if ADAFRUIT_BOOTLOADER
 		NRF_POWER->GPREGRET = 0x57; // DFU_MAGIC_UF2_RESET
