@@ -248,7 +248,7 @@ static void disconnect_sensor_pins(void)
 	gpio_pin_configure_dt(&int0, GPIO_DISCONNECTED);
 	LOG_INF("Disconnected INT0 GPIO");
 #endif
-#if CLK_EXISTS
+#if CLK_EXISTS && !defined(CONFIG_BOARD_STYRIA_MINI_UF2)
 	gpio_pin_configure_dt(&clk, GPIO_DISCONNECTED);
 	LOG_INF("Disconnected CLK GPIO");
 #endif
