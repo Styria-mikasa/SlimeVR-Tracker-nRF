@@ -29,6 +29,8 @@ const char* sensor_get_sensor_imu_name(void);
 const char* sensor_get_sensor_mag_name(void);
 const char* sensor_get_sensor_fusion_name(void);
 
+int sensor_get_sensor_temperature(float *);
+
 int sensor_request_scan(bool force);
 
 void sensor_scan_read(void);
@@ -42,12 +44,43 @@ void sensor_shutdown(void);
 uint8_t sensor_setup_WOM(void);
 
 void sensor_fusion_invalidate(void);
+void sensor_fusion_update_bias(float *g_off);
 
 void wait_for_threads(void);
 void main_imu_suspend(void);
 void main_imu_resume(void);
 void main_imu_wakeup(void);
 void main_imu_restart(void);
+
+#if CONFIG_SENSOR_USE_TCAL_MANUAL_POLYNOMIAL
+float sensor_get_current_imu_temperature(void);
+#endif
+
+// Get actual sensor ODR (Output Data Rate) in Hz
+float sensor_get_accel_odr(void);
+float sensor_get_gyro_odr(void);
+
+// Debug mode functions
+void sensor_debug_start(uint32_t duration_sec);
+void sensor_debug_stop(void);
+bool sensor_debug_is_active(void);
+
+// Sensor range tracking - records min/max values during runtime (not persisted)
+typedef struct {
+	float gyro_max[3];   // Maximum gyro values per axis (deg/s)
+	float gyro_min[3];   // Minimum gyro values per axis (deg/s)
+	float accel_max[3];  // Maximum accel values per axis (g)
+	float accel_min[3];  // Minimum accel values per axis (g)
+	uint64_t sample_count;  // Total samples processed
+	bool initialized;    // Whether tracking has been initialized
+} sensor_range_stats_t;
+
+// Get the current range statistics
+const sensor_range_stats_t* sensor_get_range_stats(void);
+// Reset range statistics
+void sensor_reset_range_stats(void);
+// Print range statistics to console
+void sensor_print_range_stats(void);
 
 typedef struct sensor_fusion {
 	void (*init)(float, float, float);  // gyro_time, accel_time, mag_time

@@ -48,21 +48,20 @@ void vqf_update_sensor_ids(int imu)
 static void set_params()
 {
 	init_params(&params);
-	params.biasClip = 5.0f;
+	params.biasClip = 4.0f;
 	params.tauMag = 10.0f; // best result for VQF from paper
-	// best result from optimizer
-	params.biasForgettingTime = 136.579346;
-	params.biasSigmaInit = 3.219453;
-	params.biasSigmaMotion = 0.348501;
-	params.biasSigmaRest = 0.063616;
-	params.biasVerticalForgettingFactor = 0.007056;
+	params.biasForgettingTime = 120.0f;
+	params.biasSigmaInit = 2.0f;
+	params.biasSigmaMotion = 0.3f;
+	params.biasSigmaRest = 0.05f;
+	params.biasVerticalForgettingFactor = 0.00001f;
 	params.motionBiasEstEnabled = true;
 	params.restBiasEstEnabled = true;
-	params.restFilterTau = 1.114532;
-	params.restMinT = 2.586910;
-	params.restThAcc = 1.418598;
-	params.restThGyr = 1.399189;
-	params.tauAcc = 4.337983;
+	params.restFilterTau = 1.5f;
+	params.restMinT = 3.0f;
+	params.restThAcc = 0.3f;
+	params.restThGyr = 1.0f;
+	params.tauAcc = 3.6f;
 }
 
 void vqf_init(float g_time, float a_time, float m_time)
@@ -174,6 +173,31 @@ bool vqf_get_rest_detected(void)
 void vqf_get_relative_rest_deviations(float *out)
 {
 	getRelativeRestDeviations(&params, &state, out);
+}
+
+void vqf_get_debug_info(vqf_debug_info_t *info)
+{
+	if (!info) return;
+
+	info->rest_detected = getRestDetected(&state);
+	getRelativeRestDeviations(&params, &state, info->rest_deviations);
+	info->bias_sigma = getBiasEstimate(&state, &coeffs, info->bias);
+	info->delta = getDelta(&state);
+	info->mag_dist_detected = getMagDistDetected(&state);
+	info->mag_ref_norm = getMagRefNorm(&state);
+	info->mag_ref_dip = getMagRefDip(&state);
+
+	// Convert bias from rad/s to °/s
+	for (int i = 0; i < 3; i++) {
+		info->bias[i] *= 180.0f / M_PI;
+	}
+	info->bias_sigma *= 180.0f / M_PI;
+
+	// Convert delta from rad to degrees
+	info->delta *= 180.0f / M_PI;
+
+	// Convert mag_ref_dip from rad to degrees
+	info->mag_ref_dip *= 180.0f / M_PI;
 }
 
 const sensor_fusion_t sensor_fusion_vqf = {

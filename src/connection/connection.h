@@ -23,6 +23,7 @@
 #ifndef SLIMENRF_CONNECTION
 #define SLIMENRF_CONNECTION
 
+uint32_t get_ping_interval_ms(void);
 void connection_clocks_request_start(void);
 void connection_clocks_request_start_delay_us(uint32_t delay_us);
 void connection_clocks_request_stop(void);
@@ -36,12 +37,7 @@ void connection_update_sensor_ids(int imu_id, int mag_id);
 void connection_update_sensor_data(float *q, float *a, int64_t data_time); // ticks
 void connection_update_sensor_mag(float *m);
 void connection_update_sensor_temp(float temp);
-void connection_update_battery(
-	bool battery_available,
-	bool plugged,
-	uint32_t battery_pptt,
-	int battery_mV
-);
+void connection_update_battery(bool battery_available, bool plugged, bool charged, uint32_t battery_pptt, int battery_mV);
 void connection_update_status(int status);
 
 void connection_write_packet_0();

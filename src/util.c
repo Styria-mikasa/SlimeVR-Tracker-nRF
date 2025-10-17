@@ -58,15 +58,15 @@ void q_negate(const float* q, float* out) {
 	out[3] = -q[3];
 }
 
-float q_diff_mag(const float* x, const float* y) {
-	float z[4];
-	float q[4];
-	q_conj(x, z);
-	q_multiply(z, y, q);
-	if (q[0] > 1) {
+float q_diff_mag(const float *x, const float *y)
+{
+	/* same as quatmultiply(quatconj(x), y, z), where s is scalar of z
+	 * to handle possible inverted quaternions, it should be enough to make sure s is positive
+	 */
+	float s = fabsf(x[0]*y[0] + x[1]*y[1] + x[2]*y[2] + x[3]*y[3]);
+	if (s > 1)
 		return 0;
-	}
-	return fabsf(2 * acosf(q[0]));
+	return 2 * acosf(s);
 }
 
 void v_rotate(const float* v, const float* q, float* out)  // TODO: not the most optimal
@@ -89,15 +89,12 @@ float v_diff_mag(const float* a, const float* b) {
 	return sqrtf(x * x + y * y + z * z);
 }
 
-bool q_epsilon(const float* x, const float* y, float eps) {
-	float z[4];
-	float q[4];
-	q_conj(x, z);
-	q_multiply(z, y, q);
-	if (q[0] > 1) {
+bool q_epsilon(const float *x, const float *y, float eps)
+{
+	float s = fabsf(x[0]*y[0] + x[1]*y[1] + x[2]*y[2] + x[3]*y[3]);
+	if (s > 1)
 		return true;
-	}
-	return fabsf(2 * acosf(q[0])) < eps;
+	return (2 * acosf(s)) < eps;
 }
 
 bool v_epsilon(const float* a, const float* b, float eps) {
@@ -118,6 +115,17 @@ void apply_BAinv(float xyz[3], float BAinv[4][3]) {
 	xyz[0] = BAinv[1][0] * temp[0] + BAinv[1][1] * temp[1] + BAinv[1][2] * temp[2];
 	xyz[1] = BAinv[2][0] * temp[0] + BAinv[2][1] * temp[1] + BAinv[2][2] * temp[2];
 	xyz[2] = BAinv[3][0] * temp[0] + BAinv[3][1] * temp[1] + BAinv[3][2] * temp[2];
+}
+
+// using xiofusion FusionAhrsGetLinearAcceleration as reference
+void a_to_lin_a(const float *q, const float *a, float *lin_a)
+{
+	float vec_gravity[3] = {0};
+	vec_gravity[0] = 2.0f * (q[1] * q[3] - q[0] * q[2]);
+	vec_gravity[1] = 2.0f * (q[2] * q[3] + q[0] * q[1]);
+	vec_gravity[2] = 2.0f * (q[0] * q[0] - 0.5f + q[3] * q[3]);
+	for (int i = 0; i < 3; i++)
+		lin_a[i] = (a[i] - vec_gravity[i]) * CONST_EARTH_GRAVITY; // vector to m/s^2
 }
 
 // http://marc-b-reynolds.github.io/quaternions/2017/05/02/QuatQuantPart1.html#fnref:pos:3
