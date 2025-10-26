@@ -27,13 +27,17 @@
 #include "hid.h"
 
 #include <zephyr/kernel.h>
+#include <zephyr/sys/atomic.h>
+#include <zephyr/sys/crc.h>
 
 static uint8_t tracker_id, batt, batt_v, sensor_temp, imu_id, mag_id, tracker_status;
 static uint8_t tracker_svr_status = SVR_STATUS_OK;
 static float sensor_q[4], sensor_a[3], sensor_m[3];
 
 static uint8_t data_buffer[16] = {0};
-static int64_t last_data_time = 0;
+static volatile bool data_ready = false;
+static uint8_t packet_sequence = 0;
+static K_MUTEX_DEFINE(buffer_mutex);
 
 LOG_MODULE_REGISTER(connection, LOG_LEVEL_INF);
 
@@ -68,6 +72,25 @@ uint8_t connection_get_id(void)
 void connection_set_id(uint8_t id)
 {
 	tracker_id = id;
+}
+
+uint8_t connection_get_packet_sequence(void)
+{
+	return packet_sequence;
+}
+
+static void write_packet_data(uint8_t *data)
+{
+    // 获取互斥锁，确保数据写入的原子性
+    if (k_mutex_lock(&buffer_mutex, K_MSEC(1)) != 0) {
+        LOG_WRN("Failed to acquire buffer mutex, dropping packet");
+        return;
+    }
+
+    memcpy(data_buffer, data, 16);
+    data_ready = true;
+
+    k_mutex_unlock(&buffer_mutex);
 }
 
 void connection_update_sensor_ids(int imu, int mag)
@@ -168,8 +191,8 @@ void connection_write_packet_0() // device info
 	data[13] = FW_VERSION_MINOR & 255; // fw_minor
 	data[14] = FW_VERSION_PATCH & 255; // fw_patch
 	data[15] = 0; // rssi (supplied by receiver)
-	memcpy(data_buffer, data, sizeof(data));
-	last_data_time = k_uptime_get(); // TODO: use ticks
+
+	write_packet_data(data);
 //	esb_write(data); // TODO: schedule in thread
 	hid_write_packet_n(data); // TODO:
 }
@@ -184,11 +207,11 @@ void connection_write_packet_1() // full precision quat and accel
 	buf[1] = TO_FIXED_15(sensor_q[2]);
 	buf[2] = TO_FIXED_15(sensor_q[3]);
 	buf[3] = TO_FIXED_15(sensor_q[0]);
-	buf[4] = TO_FIXED_7(sensor_a[0]); // range is ±256m/s² or ±26.1g 
+	buf[4] = TO_FIXED_7(sensor_a[0]); // range is ±256m/s² or ±26.1g
 	buf[5] = TO_FIXED_7(sensor_a[1]);
 	buf[6] = TO_FIXED_7(sensor_a[2]);
-	memcpy(data_buffer, data, sizeof(data));
-	last_data_time = k_uptime_get(); // TODO: use ticks
+
+	write_packet_data(data);
 //	esb_write(data); // TODO: schedule in thread
 	hid_write_packet_n(data); // TODO:
 }
@@ -222,8 +245,8 @@ void connection_write_packet_2() // reduced precision quat and accel with batter
 	buf[1] = TO_FIXED_7(sensor_a[1]);
 	buf[2] = TO_FIXED_7(sensor_a[2]);
 	data[15] = 0; // rssi (supplied by receiver)
-	memcpy(data_buffer, data, sizeof(data));
-	last_data_time = k_uptime_get(); // TODO: use ticks
+
+	write_packet_data(data);
 //	esb_write(data); // TODO: schedule in thread
 	hid_write_packet_n(data); // TODO:
 }
@@ -236,8 +259,8 @@ void connection_write_packet_3() // status
 	data[2] = tracker_svr_status;
 	data[3] = tracker_status;
 	data[15] = 0; // rssi (supplied by receiver)
-	memcpy(data_buffer, data, sizeof(data));
-	last_data_time = k_uptime_get(); // TODO: use ticks
+
+	write_packet_data(data);
 //	esb_write(data); // TODO: schedule in thread
 	hid_write_packet_n(data); // TODO:
 }
@@ -255,8 +278,8 @@ void connection_write_packet_4() // full precision quat and magnetometer
 	buf[4] = TO_FIXED_10(sensor_m[0]); // range is ±32G
 	buf[5] = TO_FIXED_10(sensor_m[1]);
 	buf[6] = TO_FIXED_10(sensor_m[2]);
-	memcpy(data_buffer, data, sizeof(data));
-	last_data_time = k_uptime_get(); // TODO: use ticks
+
+	write_packet_data(data);
 //	esb_write(data); // TODO: schedule in thread
 	hid_write_packet_n(data); // TODO:
 }
@@ -279,10 +302,24 @@ void connection_thread(void)
 	// TODO: checking for connection_update events from sensor_loop, here we will time and send them out
 	while (1)
 	{
-		if (last_data_time != 0) // have valid data
-		{
-			last_data_time = 0;
-			esb_write(data_buffer);
+		if (data_ready) {
+			if (k_mutex_lock(&buffer_mutex, K_MSEC(1)) == 0) {
+				uint8_t esb_packet[21];
+				memcpy(esb_packet, data_buffer, 16);
+
+				uint32_t crc = crc32_k_4_2_update(0x93a409eb, esb_packet, 16);
+				memcpy(&esb_packet[16], &crc, sizeof(uint32_t));
+
+				esb_packet[20] = ++packet_sequence;
+				data_ready = false;
+
+				k_mutex_unlock(&buffer_mutex);
+				esb_write(esb_packet);
+
+				LOG_DBG("Sent ESB packet type %d, seq %d", esb_packet[0], esb_packet[20]);
+			} else {
+				LOG_WRN("Failed to acquire mutex for reading data");
+			}
 		}
 		// mag is higher priority (skip accel, quat is full precision)
 		else if (mag_update_time && k_uptime_get() - last_mag_time > 200)
